@@ -83,7 +83,8 @@
         messages,
         delays,
         startTime: Date.now(),
-        currentStep: 0
+        currentStep: 0,
+        status: 'active'
       };
 
       let totalDelay = 0;
@@ -99,7 +100,7 @@
 
     async cancelFunnel(contactId) {
       if (this.funnels[contactId]) {
-        delete this.funnels[contactId];
+        this.funnels[contactId].status = 'cancelled';
         const alarms = await chrome.alarms.getAll();
         alarms
           .filter(alarm => alarm.name.startsWith(`funil_${contactId}`))
@@ -107,12 +108,17 @@
         await this.save();
       }
     }
+
+    getFunnelStatus(contactId) {
+      return this.funnels[contactId]?.status || 'none';
+    }
   }
 
   class BrazzaUI {
     constructor() {
       this.crm = new CRMManager();
       this.sequentialScripts = new SequentialScripts();
+      this.funnelManager = new FunnelManager();
       this.activeTab = 'crm';
       this.initializeUI();
     }
@@ -121,6 +127,7 @@
       this.createStyles();
       this.createMainPanel();
       this.setupEventListeners();
+      this.refreshUI();
     }
 
     createStyles() {
@@ -145,6 +152,9 @@
           background: #25D366;
           color: white;
           border-bottom: 1px solid #128C7E;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
         
         #brazza-tabs {
@@ -159,11 +169,14 @@
           border: none;
           background: none;
           font-size: 14px;
+          flex: 1;
+          text-align: center;
         }
         
         .brazza-tab.active {
           background: white;
           border-bottom: 2px solid #25D366;
+          font-weight: bold;
         }
         
         .brazza-content {
@@ -189,10 +202,103 @@
           cursor: pointer;
           margin: 5px 0;
           width: 100%;
+          font-size: 14px;
         }
         
         .brazza-btn:hover {
           background: #128C7E;
+        }
+
+        .brazza-card {
+          background: #f8f9fa;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+          padding: 10px;
+          margin: 10px 0;
+        }
+
+        .brazza-card h4 {
+          margin: 0 0 10px 0;
+          color: #128C7E;
+        }
+
+        .brazza-input {
+          width: 100%;
+          padding: 8px;
+          margin: 5px 0;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+        }
+
+        .brazza-textarea {
+          width: 100%;
+          padding: 8px;
+          margin: 5px 0;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 14px;
+          min-height: 100px;
+          resize: vertical;
+        }
+
+        .brazza-label {
+          display: block;
+          margin: 5px 0;
+          color: #666;
+          font-size: 14px;
+        }
+
+        .brazza-badge {
+          display: inline-block;
+          padding: 3px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: bold;
+          margin-left: 5px;
+        }
+
+        .brazza-badge-success {
+          background: #d4edda;
+          color: #155724;
+        }
+
+        .brazza-badge-warning {
+          background: #fff3cd;
+          color: #856404;
+        }
+
+        .brazza-badge-danger {
+          background: #f8d7da;
+          color: #721c24;
+        }
+
+        .brazza-close-btn {
+          background: none;
+          border: none;
+          color: white;
+          cursor: pointer;
+          font-size: 20px;
+          padding: 0 5px;
+        }
+
+        .brazza-close-btn:hover {
+          color: #f0f0f0;
+        }
+
+        .brazza-actions {
+          display: flex;
+          gap: 5px;
+          margin-top: 5px;
+        }
+
+        .brazza-actions button {
+          flex: 1;
+        }
+
+        .brazza-small-btn {
+          padding: 4px 8px;
+          font-size: 12px;
         }
       `;
       document.head.appendChild(style);
@@ -205,7 +311,10 @@
       // Header
       const header = document.createElement('div');
       header.id = 'brazza-panel-header';
-      header.innerHTML = '<h2 style="margin:0">BrazzaWhats PRO</h2>';
+      header.innerHTML = `
+        <h2 style="margin:0">BrazzaWhats PRO</h2>
+        <button class="brazza-close-btn" id="brazza-close">×</button>
+      `;
       
       // Tabs
       const tabs = document.createElement('div');
@@ -225,8 +334,7 @@
       crmSection.className = 'brazza-section active';
       crmSection.dataset.section = 'crm';
       crmSection.innerHTML = `
-        <h3>Gerenciar Contatos</h3>
-        <button class="brazza-btn" id="btn-add-contact">Adicionar Contato</button>
+        <button class="brazza-btn" id="btn-add-contact">+ Adicionar Contato</button>
         <div id="contacts-list"></div>
       `;
       
@@ -235,8 +343,7 @@
       scriptsSection.className = 'brazza-section';
       scriptsSection.dataset.section = 'scripts';
       scriptsSection.innerHTML = `
-        <h3>Scripts Sequenciais</h3>
-        <button class="brazza-btn" id="btn-add-script">Novo Script</button>
+        <button class="brazza-btn" id="btn-add-script">+ Novo Script</button>
         <div id="scripts-list"></div>
       `;
       
@@ -245,8 +352,7 @@
       funilSection.className = 'brazza-section';
       funilSection.dataset.section = 'funil';
       funilSection.innerHTML = `
-        <h3>Funil de Mensagens</h3>
-        <button class="brazza-btn" id="btn-create-funnel">Criar Funil</button>
+        <button class="brazza-btn" id="btn-create-funnel">+ Criar Funil</button>
         <div id="funnels-list"></div>
       `;
       
@@ -280,6 +386,7 @@
           });
           
           this.activeTab = tab.dataset.tab;
+          this.refreshUI();
         });
       });
     }
@@ -290,18 +397,24 @@
           this.togglePanel();
         }
       });
+
+      this.panel.querySelector('#brazza-close').addEventListener('click', () => {
+        this.togglePanel();
+      });
       
-      // Botões de ação
       this.panel.querySelector('#btn-add-contact').addEventListener('click', () => {
         this.crm.addContact();
+        this.refreshUI();
       });
       
       this.panel.querySelector('#btn-add-script').addEventListener('click', () => {
         this.sequentialScripts.addScript();
+        this.refreshUI();
       });
       
       this.panel.querySelector('#btn-create-funnel').addEventListener('click', () => {
         this.createNewFunnel();
+        this.refreshUI();
       });
     }
 
@@ -313,9 +426,113 @@
       this.panel.style.right = '0px';
     }
 
+    refreshUI() {
+      switch (this.activeTab) {
+        case 'crm':
+          this.refreshContacts();
+          break;
+        case 'scripts':
+          this.refreshScripts();
+          break;
+        case 'funil':
+          this.refreshFunnels();
+          break;
+      }
+    }
+
+    refreshContacts() {
+      const contactsList = this.panel.querySelector('#contacts-list');
+      contactsList.innerHTML = '';
+      
+      Object.entries(this.crm.contacts).forEach(([id, contact]) => {
+        const card = document.createElement('div');
+        card.className = 'brazza-card';
+        card.innerHTML = `
+          <h4>${contact.name}</h4>
+          <p>${contact.phone}</p>
+          <div class="brazza-actions">
+            <button class="brazza-btn brazza-small-btn" onclick="window.brazzaApp.ui.crm.editContact('${id}')">Editar</button>
+            <button class="brazza-btn brazza-small-btn" onclick="window.brazzaApp.ui.crm.deleteContact('${id}')">Excluir</button>
+          </div>
+        `;
+        contactsList.appendChild(card);
+      });
+    }
+
+    refreshScripts() {
+      const scriptsList = this.panel.querySelector('#scripts-list');
+      scriptsList.innerHTML = '';
+      
+      this.sequentialScripts.scripts.forEach((script, index) => {
+        const card = document.createElement('div');
+        card.className = 'brazza-card';
+        card.innerHTML = `
+          <h4>${script.name}</h4>
+          <p>${script.messages.length} mensagens</p>
+          <div class="brazza-actions">
+            <button class="brazza-btn brazza-small-btn" onclick="window.brazzaApp.ui.sequentialScripts.editScript(${index})">Editar</button>
+            <button class="brazza-btn brazza-small-btn" onclick="window.brazzaApp.ui.sequentialScripts.deleteScript(${index})">Excluir</button>
+          </div>
+        `;
+        scriptsList.appendChild(card);
+      });
+    }
+
+    refreshFunnels() {
+      const funnelsList = this.panel.querySelector('#funnels-list');
+      funnelsList.innerHTML = '';
+      
+      Object.entries(this.funnelManager.funnels).forEach(([contactId, funnel]) => {
+        const contact = this.crm.contacts[contactId];
+        if (!contact) return;
+
+        const card = document.createElement('div');
+        card.className = 'brazza-card';
+        
+        const statusBadge = this.getStatusBadge(funnel.status);
+        
+        card.innerHTML = `
+          <h4>${contact.name} ${statusBadge}</h4>
+          <p>${funnel.messages.length} mensagens agendadas</p>
+          <div class="brazza-actions">
+            <button class="brazza-btn brazza-small-btn" onclick="window.brazzaApp.ui.funnelManager.cancelFunnel('${contactId}')">Cancelar</button>
+          </div>
+        `;
+        funnelsList.appendChild(card);
+      });
+    }
+
+    getStatusBadge(status) {
+      const badges = {
+        active: '<span class="brazza-badge brazza-badge-success">Ativo</span>',
+        completed: '<span class="brazza-badge brazza-badge-warning">Concluído</span>',
+        cancelled: '<span class="brazza-badge brazza-badge-danger">Cancelado</span>'
+      };
+      return badges[status] || '';
+    }
+
     createNewFunnel() {
-      // Implementação futura
-      alert('Funcionalidade em desenvolvimento');
+      const contactId = prompt('ID do contato:');
+      if (!contactId || !this.crm.contacts[contactId]) {
+        alert('Contato não encontrado!');
+        return;
+      }
+
+      const messagesStr = prompt('Mensagens (separadas por |):');
+      if (!messagesStr) return;
+      
+      const delaysStr = prompt('Atrasos em horas (separados por |):');
+      if (!delaysStr) return;
+
+      const messages = messagesStr.split('|');
+      const delays = delaysStr.split('|').map(Number);
+
+      try {
+        this.funnelManager.createFunnel(contactId, messages, delays);
+        this.refreshFunnels();
+      } catch (error) {
+        alert('Erro ao criar funil: ' + error.message);
+      }
     }
   }
 
@@ -334,8 +551,38 @@
     }
 
     addContact() {
-      // Implementação futura
-      alert('Funcionalidade em desenvolvimento');
+      const name = prompt('Nome do contato:');
+      if (!name) return;
+      
+      const phone = prompt('Número do WhatsApp:');
+      if (!phone) return;
+
+      const id = Date.now().toString();
+      this.contacts[id] = { name, phone };
+      this.save();
+    }
+
+    editContact(id) {
+      const contact = this.contacts[id];
+      if (!contact) return;
+
+      const name = prompt('Nome do contato:', contact.name);
+      if (!name) return;
+      
+      const phone = prompt('Número do WhatsApp:', contact.phone);
+      if (!phone) return;
+
+      this.contacts[id] = { name, phone };
+      this.save();
+      window.brazzaApp.ui.refreshUI();
+    }
+
+    deleteContact(id) {
+      if (!confirm('Tem certeza que deseja excluir este contato?')) return;
+      
+      delete this.contacts[id];
+      this.save();
+      window.brazzaApp.ui.refreshUI();
     }
   }
 
@@ -354,8 +601,39 @@
     }
 
     addScript() {
-      // Implementação futura
-      alert('Funcionalidade em desenvolvimento');
+      const name = prompt('Nome do script:');
+      if (!name) return;
+      
+      const messagesStr = prompt('Mensagens (separadas por |):');
+      if (!messagesStr) return;
+
+      const messages = messagesStr.split('|');
+      this.scripts.push({ name, messages });
+      this.save();
+    }
+
+    editScript(index) {
+      const script = this.scripts[index];
+      if (!script) return;
+
+      const name = prompt('Nome do script:', script.name);
+      if (!name) return;
+      
+      const messagesStr = prompt('Mensagens (separadas por |):', script.messages.join('|'));
+      if (!messagesStr) return;
+
+      const messages = messagesStr.split('|');
+      this.scripts[index] = { name, messages };
+      this.save();
+      window.brazzaApp.ui.refreshUI();
+    }
+
+    deleteScript(index) {
+      if (!confirm('Tem certeza que deseja excluir este script?')) return;
+      
+      this.scripts.splice(index, 1);
+      this.save();
+      window.brazzaApp.ui.refreshUI();
     }
   }
 
@@ -363,23 +641,23 @@
     if (message.type === 'SEND_FUNNEL_MESSAGE') {
       const { contactId, messageIndex, message: text } = message;
       console.log(`Enviando mensagem ${messageIndex} para ${contactId}: ${text}`);
+      
+      // Aqui vamos implementar o envio real da mensagem
+      const contact = window.brazzaApp.crm.contacts[contactId];
+      if (contact) {
+        // TODO: Implementar envio real da mensagem
+        console.log(`Mensagem enviada para ${contact.name} (${contact.phone}): ${text}`);
+      }
     }
   });
 
   async function initApp() {
     setTimeout(async () => {
       try {
-        const ui = new BrazzaUI();
-        const funnelManager = new FunnelManager();
-        
         window.brazzaApp = {
-          ui,
-          crm: ui.crm,
-          scripts: ui.sequentialScripts,
-          funnelManager,
+          ui: new BrazzaUI(),
           storageManager: StorageManager
         };
-
       } catch (error) {
         console.error("Falha ao inicializar BrazzaWhats PRO:", error);
       }
