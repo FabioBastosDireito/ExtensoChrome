@@ -88,12 +88,11 @@
         currentStep: 0
       };
 
-      // Configura os alarmes para as mensagens
       let totalDelay = 0;
       messages.forEach((_, index) => {
         totalDelay += delays[index];
         chrome.alarms.create(`funil_${contactId}_${index}`, {
-          when: Date.now() + (totalDelay * 60 * 60 * 1000) // Converte horas para milissegundos
+          when: Date.now() + (totalDelay * 60 * 60 * 1000)
         });
       });
 
@@ -103,7 +102,6 @@
     async cancelFunnel(contactId) {
       if (this.funnels[contactId]) {
         delete this.funnels[contactId];
-        // Cancela todos os alarmes relacionados
         const alarms = await chrome.alarms.getAll();
         alarms
           .filter(alarm => alarm.name.startsWith(`funil_${contactId}`))
@@ -113,18 +111,101 @@
     }
   }
 
-  // [Resto do código existente permanece o mesmo, apenas substituindo localStorage por StorageManager]
-  
-  // Adiciona listener para mensagens do background script
+  // Nova classe BrazzaUI
+  class BrazzaUI {
+    constructor() {
+      this.crm = new CRMManager();
+      this.sequentialScripts = new SequentialScripts();
+      this.initializeUI();
+    }
+
+    initializeUI() {
+      this.createMainPanel();
+      this.setupEventListeners();
+    }
+
+    createMainPanel() {
+      const panel = document.createElement('div');
+      panel.id = 'brazza-panel';
+      panel.style.cssText = `
+        position: fixed;
+        top: 0;
+        right: -300px;
+        width: 300px;
+        height: 100vh;
+        background: white;
+        box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+        transition: right 0.3s;
+        z-index: 9999;
+      `;
+      
+      const header = document.createElement('div');
+      header.innerHTML = '<h2>BrazzaWhats PRO</h2>';
+      header.style.padding = '10px';
+      header.style.borderBottom = '1px solid #ddd';
+      
+      panel.appendChild(header);
+      document.body.appendChild(panel);
+      this.panel = panel;
+    }
+
+    setupEventListeners() {
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'b') {
+          this.togglePanel();
+        }
+      });
+    }
+
+    togglePanel() {
+      this.panel.style.right = this.panel.style.right === '0px' ? '-300px' : '0px';
+    }
+
+    ensurePanelVisible() {
+      this.panel.style.right = '0px';
+    }
+  }
+
+  // Classes auxiliares
+  class CRMManager {
+    constructor() {
+      this.contacts = {};
+      this.load();
+    }
+
+    async load() {
+      this.contacts = await StorageManager.get(STORAGE_KEY_CRM) || {};
+    }
+
+    async save() {
+      await StorageManager.set(STORAGE_KEY_CRM, this.contacts);
+    }
+  }
+
+  class SequentialScripts {
+    constructor() {
+      this.scripts = [];
+      this.load();
+    }
+
+    async load() {
+      this.scripts = await StorageManager.get(STORAGE_KEY_SCRIPTS) || [];
+    }
+
+    async save() {
+      await StorageManager.set(STORAGE_KEY_SCRIPTS, this.scripts);
+    }
+  }
+
+  // Listener para mensagens do background script
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'SEND_FUNNEL_MESSAGE') {
       const { contactId, messageIndex, message: text } = message;
-      // Implementar lógica para enviar a mensagem no WhatsApp
       console.log(`Enviando mensagem ${messageIndex} para ${contactId}: ${text}`);
     }
   });
 
-  // --- Inicialização ---
+  // Inicialização
   async function initApp() {
     setTimeout(async () => {
       try {
@@ -138,13 +219,6 @@
           funnelManager,
           storageManager: StorageManager
         };
-
-        // Exemplo de criação de funil (24h e 48h)
-        // await funnelManager.createFunnel('123@c.us', [
-        //   'Primeira mensagem',
-        //   'Segunda mensagem (24h)',
-        //   'Terceira mensagem (48h)'
-        // ], [0, 24, 48]);
 
       } catch (error) {
         console.error("Falha ao inicializar BrazzaWhats PRO:", error);
