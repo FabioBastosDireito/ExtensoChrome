@@ -11,5 +11,11 @@ export default defineConfig({
         options: 'options.html'
       }
     }
+  },
+  server: {
+    port: 5173,
+    hmr: {
+      protocol: 'ws'
+    }
   }
 });

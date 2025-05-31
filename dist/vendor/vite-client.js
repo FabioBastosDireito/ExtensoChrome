@@ -494,13 +494,13 @@ if (customElements && !customElements.get(overlayId)) {
 
 console.debug("[vite] connecting...");
 const importMetaUrl = new URL(import.meta.url);
-const serverHost = "localhost:undefined/";
-const socketProtocol = null || (importMetaUrl.protocol === "https:" ? "wss" : "ws");
+const serverHost = "localhost:5173/";
+const socketProtocol = "ws" || (importMetaUrl.protocol === "https:" ? "wss" : "ws");
 const hmrPort = null;
 const socketHost = `${"localhost" || importMetaUrl.hostname}:${hmrPort || importMetaUrl.port}${"/"}`;
-const directSocketHost = "localhost:undefined/";
+const directSocketHost = "localhost:5173/";
 const base = "/" || "/";
-const wsToken = "RZMd51zynw5e";
+const wsToken = "rXoxz3kepOYe";
 let socket;
 try {
   let fallback;
