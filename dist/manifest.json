@@ -16,11 +16,11 @@
   ],
   "content_scripts": [
     {
-      "js": [
-        "assets/content.js-DT1Uflw0.js"
-      ],
       "matches": [
         "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "scripts/content.js-loader.js"
       ]
     }
   ],
@@ -47,10 +47,11 @@
   "web_accessible_resources": [
     {
       "matches": [
-        "https://web.whatsapp.com/*"
+        "<all_urls>"
       ],
       "resources": [
-        "assets/content.js-DT1Uflw0.js"
+        "**/*",
+        "*"
       ],
       "use_dynamic_url": false
     }
