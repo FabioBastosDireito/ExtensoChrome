@@ -1,0 +1,19 @@
+{
+  "name": "brazza-whats-pro",
+  "version": "2.4.0",
+  "description": "CRM para WhatsApp Web redesenhado e profissional",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chrome-types": "^0.1.231"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@types/chrome": "^0.0.246",
+    "typescript": "^5.0.0"
+  }
+}
