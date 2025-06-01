@@ -496,11 +496,11 @@ console.debug("[vite] connecting...");
 const importMetaUrl = new URL(import.meta.url);
 const serverHost = "localhost:5173/";
 const socketProtocol = "ws" || (importMetaUrl.protocol === "https:" ? "wss" : "ws");
-const hmrPort = null;
+const hmrPort = 80;
 const socketHost = `${"localhost" || importMetaUrl.hostname}:${hmrPort || importMetaUrl.port}${"/"}`;
 const directSocketHost = "localhost:5173/";
 const base = "/" || "/";
-const wsToken = "rXoxz3kepOYe";
+const wsToken = "2eK1D7wgONFC";
 let socket;
 try {
   let fallback;
